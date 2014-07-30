@@ -92,7 +92,7 @@ getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents
 clean = T.filter (`notElem` "[]:(){}\"<>")
 
 notGarbage t = and 
-  [ T.head t `notElem` "[]':(){}\""
+  [ T.head t `notElem` "-[]':(){}\""
   , T.last t `notElem` "[]':(){}\""
   , not (T.isPrefixOf "Chorus" t)
   ]
@@ -100,8 +100,22 @@ notGarbage t = and
 shead []    = Nothing
 shead (x:_) = Just x
 
-go mkv hds lst acc start
+go' fls lst acc start
   | T.length acc > 140 = return lst
+  | otherwise = do
+      songs <- replicateM 5 (uniform fls)
+      lns <- (map T.pack . concat) <$> mapM getLines songs
+      let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
+          !mkv = markovStrings lns
+      seed <- uniform hds
+      g    <- newStdGen
+      let res = T.unwords <$> runMarkov 25 mkv g seed
+      case res of
+        Left err  -> error err
+        Right str -> go' fls acc (acc <> (if start then "" else "\n") <> str) False
+
+go mkv hds lst acc start
+  | T.length acc > 140 && not (T.null lst) = return $ if T.last lst == ',' then T.init lst else lst
   | otherwise = do
     seed <- uniform hds
     g    <- newStdGen
@@ -112,7 +126,7 @@ go mkv hds lst acc start
 
 test = do
   songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 20 (uniform songs)
+  files <- replicateM 12 (uniform songs)
   lns <- (map T.pack . concat) <$> mapM getLines files
   let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
       !mkv = markovStrings lns
@@ -120,3 +134,4 @@ test = do
   forM_ ress $ \res -> do
     putStrLn $ T.unpack res
     putStrLn ""
+
