@@ -74,7 +74,8 @@ markov :: (RandomGen g, Ord a) => [a] -> Markov g a
 markov = Markov . M.map (fmap fromList) . markovi 
 
 fromMarkovI = Markov . M.map (fromList <$>)
-markoviString = markovi . T.words
+markoviString = markovi . (filter notGarbage) . T.words
+  where notGarbage = True
 markoviStrings = foldr1 joinMarkovI . map markoviString
 
 markovString :: RandomGen g => T.Text -> Markov g T.Text
