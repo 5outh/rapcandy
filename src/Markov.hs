@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings #-}
+{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, BangPatterns #-}
 module Markov where
 
 import qualified Data.Map as M
@@ -13,6 +13,7 @@ import Data.Function
 import Data.Maybe
 import Control.Monad
 import qualified Data.Text as T
+import System.Directory
 
 newtype Markov g a = Markov{ getMarkov :: M.Map a (Maybe (Rand g a)) }
 
@@ -74,8 +75,7 @@ markov :: (RandomGen g, Ord a) => [a] -> Markov g a
 markov = Markov . M.map (fmap fromList) . markovi 
 
 fromMarkovI = Markov . M.map (fromList <$>)
-markoviString = markovi . (filter notGarbage) . T.words
-  where notGarbage = True
+markoviString = markovi . map clean . filter notGarbage . T.words
 markoviStrings = foldr1 joinMarkovI . map markoviString
 
 markovString :: RandomGen g => T.Text -> Markov g T.Text
@@ -84,13 +84,39 @@ markovString = fromMarkovI . markoviString
 markovStrings :: RandomGen g => [T.Text] -> Markov g T.Text
 markovStrings = fromMarkovI . foldr1 joinMarkovI . map markoviString
 
-test = do
-  lns <- (filter (\x -> (not $ null x) && (not $ isPrefixOf "[" x)) . lines) <$> readFile "testlyrics.txt"
-  seeds <- replicateM 20 $ uniform $ map (head . T.words) (map T.pack lns)
-  let mkv = markovStrings (map T.pack lns)
-  forM_ seeds $ \seed -> do
-    g <- newStdGen
-    let res = T.unwords <$> runMarkov 30 mkv g seed
+getLines file = 
+  filter (\x -> (not $ null x) && (not $ isPrefixOf "[" x)) . lines <$> readFile file
+
+getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents file
+
+clean = T.filter (`notElem` "[]:(){}\"<>")
+
+notGarbage t = and 
+  [ T.head t `notElem` "[]':(){}\""
+  , T.last t `notElem` "[]':(){}\""
+  , not (T.isPrefixOf "Chorus" t)
+  ]
+
+shead []    = Nothing
+shead (x:_) = Just x
+
+go mkv hds lst acc start
+  | T.length acc > 140 = return lst
+  | otherwise = do
+    seed <- uniform hds
+    g    <- newStdGen
+    let res = T.unwords <$> runMarkov 25 mkv g seed
     case res of
-      Left err -> putStrLn err
-      Right str -> putStrLn (T.unpack str)
+      Left err  -> error err
+      Right str -> go mkv hds acc (acc <> (if start then "" else "\n") <> str) False
+
+test = do
+  songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
+  files <- replicateM 20 (uniform songs)
+  lns <- (map T.pack . concat) <$> mapM getLines files
+  let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
+      !mkv = markovStrings lns
+  ress <- replicateM 100 $ go mkv hds "" "" True
+  forM_ ress $ \res -> do
+    putStrLn $ T.unpack res
+    putStrLn ""
