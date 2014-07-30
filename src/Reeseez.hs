@@ -1,4 +1,6 @@
-module Reeseez where
+module Main where
+
+import Markov
 
 main :: IO ()
-main = return ()
+main = test
