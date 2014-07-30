@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, BangPatterns #-}
+{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, BangPatterns, RecordWildCards #-}
 module Markov where
 
 import qualified Data.Map as M
@@ -92,8 +92,8 @@ getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents
 clean = T.filter (`notElem` "[]:(){}\"<>")
 
 notGarbage t = and 
-  [ T.head t `notElem` "-[]':(){}\""
-  , T.last t `notElem` "[]':(){}\""
+  [ T.head t `notElem` "-[]':(){}\"*"
+  , T.last t `notElem` "[]':(){}\"*"
   , not (T.isPrefixOf "Chorus" t)
   ]
 
@@ -114,7 +114,17 @@ go' fls lst acc start
         Left err  -> error err
         Right str -> go' fls acc (acc <> (if start then "" else "\n") <> str) False
 
-go mkv hds lst acc start
+
+data GoState = GoState
+  { mkv :: Markov StdGen T.Text
+  , hds :: [T.Text]
+  , lst :: T.Text
+  , acc :: T.Text
+  , start :: Bool
+  }
+
+go :: GoState -> IO T.Text
+go gs@GoState{..}
   | T.length acc > 140 && not (T.null lst) = return $ if T.last lst == ',' then T.init lst else lst
   | otherwise = do
     seed <- uniform hds
@@ -122,15 +132,26 @@ go mkv hds lst acc start
     let res = T.unwords <$> runMarkov 25 mkv g seed
     case res of
       Left err  -> error err
-      Right str -> go mkv hds acc (acc <> (if start then "" else "\n") <> str) False
+      Right str -> go $ gs{ lst = acc, acc = (acc <> (if start then "" else "\n") <> str), start = False }
 
-test = do
+randomTweet :: IO T.Text
+randomTweet = do
   songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 12 (uniform songs)
+  files <- replicateM 20 (uniform songs)
   lns <- (map T.pack . concat) <$> mapM getLines files
   let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
       !mkv = markovStrings lns
-  ress <- replicateM 100 $ go mkv hds "" "" True
+  go $ GoState mkv hds "" "" True
+
+test :: IO ()
+test = do
+  songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
+  files <- replicateM 50 (uniform songs)
+  !lns <- (map T.pack . concat) <$> mapM getLines files
+  let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
+      !mkv = markovStrings lns
+  putStrLn "loaded!"
+  ress <- replicateM 100 $ go $ GoState mkv hds "" "" True
   forM_ ress $ \res -> do
     putStrLn $ T.unpack res
     putStrLn ""
