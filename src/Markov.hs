@@ -120,21 +120,8 @@ go gs@GoState{..}
 randomTweet :: IO T.Text
 randomTweet = do
   songs <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 30 (uniform songs)
+  files <- replicateM 10 (uniform songs)
   lns <- (map T.pack . concat) <$> mapM getLines files
   let hds  = mapMaybe (shead . map clean . filter notGarbage . T.words) lns
       !mkv = markovStrings lns
   go $ GoState mkv hds "" "" True
-
-test :: IO ()
-test = do
-  songs <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 50 (uniform songs)
-  !lns <- (map T.pack . concat) <$> mapM getLines files
-  let hds  = mapMaybe (shead . map clean . filter notGarbage . T.words) lns
-      !mkv = markovStrings lns
-  putStrLn "loaded!"
-  ress <- replicateM 100 $ go $ GoState mkv hds "" "" True
-  forM_ ress $ \res -> do
-    putStrLn $ T.unpack res
-    putStrLn ""
