@@ -4,7 +4,6 @@ module Markov where
 import qualified Data.Map as M
 import Control.Monad.Random
 import Data.List(group, groupBy, nub, isPrefixOf)
-import Data.Maybe(listToMaybe)
 import Control.Arrow
 import Control.Applicative
 import Data.Monoid
@@ -58,7 +57,7 @@ joinMarkovI m1 m2 = foldr go m1 ks
         m1Dist k = join $ M.lookup k m1
         m2Dist k = join $ M.lookup k m2
         joined k = joinDistsMaybe (m1Dist k) (m2Dist k)
-        go k acc = M.insert k (joined k) acc
+        go k = M.insert k (joined k)
 
 joinDists :: (Eq k, Num v) => [(k, v)] -> [(k, v)] -> [(k, v)]
 joinDists d1 d2 = map addSnds $ groupBy ((==) `on` fst) (d1 ++ d2)
@@ -85,35 +84,19 @@ markovStrings :: RandomGen g => [T.Text] -> Markov g T.Text
 markovStrings = fromMarkovI . foldr1 joinMarkovI . map markoviString
 
 getLines file = 
-  filter (\x -> (not $ null x) && (not $ isPrefixOf "[" x)) . lines <$> readFile file
+  filter (\x -> not (null x) && not ("[" `isPrefixOf` x)) . lines <$> readFile file
 
 getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents file
 
 clean = T.filter (`notElem` "[]:(){}\"<>")
 
-notGarbage t = and 
-  [ T.head t `notElem` "-[]':(){}\"*"
-  , T.last t `notElem` "[]':(){}\"*"
-  , not (T.isPrefixOf "Chorus" t)
-  ]
+notGarbage t =
+     T.head t `notElem` "-[]':(){}\"*"
+  && T.last t `notElem` "[]':(){}\"*"
+  && not (T.isPrefixOf "Chorus" t)
 
 shead []    = Nothing
 shead (x:_) = Just x
-
-go' fls lst acc start
-  | T.length acc > 140 = return lst
-  | otherwise = do
-      songs <- replicateM 5 (uniform fls)
-      lns <- (map T.pack . concat) <$> mapM getLines songs
-      let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
-          !mkv = markovStrings lns
-      seed <- uniform hds
-      g    <- newStdGen
-      let res = T.unwords <$> runMarkov 25 mkv g seed
-      case res of
-        Left err  -> error err
-        Right str -> go' fls acc (acc <> (if start then "" else "\n") <> str) False
-
 
 data GoState = GoState
   { mkv :: Markov StdGen T.Text
@@ -132,27 +115,26 @@ go gs@GoState{..}
     let res = T.unwords <$> runMarkov 25 mkv g seed
     case res of
       Left err  -> error err
-      Right str -> go $ gs{ lst = acc, acc = (acc <> (if start then "" else "\n") <> str), start = False }
+      Right str -> go $ gs { lst = acc, acc = acc <> if start then "" else "\n" <> str, start = False }
 
 randomTweet :: IO T.Text
 randomTweet = do
-  songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 20 (uniform songs)
+  songs <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
+  files <- replicateM 30 (uniform songs)
   lns <- (map T.pack . concat) <$> mapM getLines files
-  let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
+  let hds  = mapMaybe (shead . map clean . filter notGarbage . T.words) lns
       !mkv = markovStrings lns
   go $ GoState mkv hds "" "" True
 
 test :: IO ()
 test = do
-  songs <- (fmap ("./scraper/lyrics/" <>)) <$> getDirectoryFiles "./scraper/lyrics"
+  songs <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
   files <- replicateM 50 (uniform songs)
   !lns <- (map T.pack . concat) <$> mapM getLines files
-  let hds  = catMaybes $ map (shead . map clean . filter notGarbage . T.words) lns
+  let hds  = mapMaybe (shead . map clean . filter notGarbage . T.words) lns
       !mkv = markovStrings lns
   putStrLn "loaded!"
   ress <- replicateM 100 $ go $ GoState mkv hds "" "" True
   forM_ ress $ \res -> do
     putStrLn $ T.unpack res
     putStrLn ""
-
