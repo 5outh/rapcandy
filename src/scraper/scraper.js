@@ -10,7 +10,6 @@ var removeBogusChars = function(str){
 
 var scrape = function(){
 
-  // Let's scrape Anchorman 2
   url = 'http://www.mldb.org/artist-102-eminem.html';
 
   request(url, function(error, response, html){
