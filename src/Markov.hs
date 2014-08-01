@@ -14,10 +14,8 @@ import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as TIO
 import           System.Random.Mersenne.Pure64
 
-newtype Markov g a = Markov{ getMarkov :: M.Map a (Maybe (Rand g a)) }
-
 type MarkovI a = M.Map a (Maybe [(a, Rational)])
-
+newtype Markov g a = Markov{ getMarkov :: M.Map a (Maybe (Rand g a)) }
 data Outcome g a =
     Error String
   | Val a g
@@ -26,7 +24,7 @@ data Outcome g a =
 
 runMarkov1 :: (RandomGen g, Ord a, Show a) => Markov g a -> g -> a -> Outcome g a
 runMarkov1 mkv gen x = case M.lookup x (getMarkov mkv) of
-  Nothing -> Error "Internal error; cannot find value" -- Val "" $ snd (next gen)
+  Nothing -> Error "Internal error; cannot find value"
   Just rs -> case flip runRand gen <$> rs of
     Nothing -> End
     Just (a, g) -> Val a g

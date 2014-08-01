@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.5outh.rapcandy</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/RapCandy</string>
+        <string>-c</string>
+        <string>/etc/rapcandy-config.json</string>
+        <string>-d</string>
+        <string>/etc/lyrics/</string>
+    </array>
+    <key>StartInterval</key>
+    <!-- Run every 12 hours !-->
+    <integer>43200</integer>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>

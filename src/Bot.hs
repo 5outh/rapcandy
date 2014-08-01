@@ -20,8 +20,8 @@ import           Web.Authenticate.OAuth
 data Config = Config {
     oauthKey    :: String,
     oauthSecret :: String,
-    appKey      :: String,
-    appSecret   :: String
+    userKey      :: String,
+    userSecret   :: String
   } deriving (Show, Generic)
 
 instance FromJSON Config
@@ -42,7 +42,7 @@ oauthTwitter key secret =
 signWithConfig :: Config -> Request -> IO Request
 signWithConfig Config{..} = signOAuth
   (oauthTwitter (B.pack oauthKey) (B.pack oauthSecret))
-  (newCredential (B.pack appKey) (B.pack appSecret))
+  (newCredential (B.pack userKey) (B.pack userSecret))
 
 configFromFile :: FilePath -> IO (Either String Config)
 configFromFile path = do

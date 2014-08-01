@@ -2,7 +2,6 @@ module Main where
 
 import           Control.Applicative
 import           Control.Concurrent  (threadDelay)
-import           Control.Monad       (forever)
 import qualified Data.Text           as T
 import           System.Environment  (getArgs)
 
@@ -21,14 +20,17 @@ main = do
   case argPairs of
     [] -> error "Usage: RapCandy -c <path/to/config.json>"
     _  -> return ()
-  let conf = lookup "-c" argPairs
+  let conf     = lookup "-c" argPairs
+      lyricdir = lookup "-d" argPairs 
   case conf of
     Nothing -> error "Please pass filepath to config.json as argument to -c"
     Just path -> do
       cfg <- configFromFile path
       case cfg of
         Left _ -> error "Trouble parsing configuration file."
-        Right config -> forever $ do
-          status <- randomTweet
+        Right config -> do
+          status <- case lyricdir of
+            Nothing  -> randomTweet
+            Just dir -> randomTweetFrom dir
           tweet config (T.unpack status)
-          threadDelay (30 * minute)
+          return ()

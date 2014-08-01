@@ -21,15 +21,19 @@ shead (x:_) = Just x
 getDirectoryFiles :: FilePath -> IO [FilePath]
 getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents file
 
-songs :: IO (Markov PureMT T.Text, [T.Text])
-songs = do
-  files <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
+songsFrom :: FilePath -> IO (Markov PureMT T.Text, [T.Text]) 
+songsFrom dir = do
+  files <- fmap ((dir <> "/") <>) <$> getDirectoryFiles dir
   lns   <- concatMap T.lines <$> mapM TIO.readFile files
   let hds = cleanUp $ filter ((`elem` ['A'..'Z']) . T.head) $ mapMaybe (shead . T.words) lns
   g    <- newPureMT
   seed <- uniform hds
   return (fromMarkovI (fromTexts lns), hds)
 
+songs :: IO (Markov PureMT T.Text, [T.Text])
+songs = songsFrom "./scraper/lyrics"
+
+cleanUp :: [T.Text] -> [T.Text]
 cleanUp = map clean . filter (not . garbage)
   where garbage t = any ($t)
           [T.null, flip elem "-[]':(){}\"*!# " . T.head, flip elem "[]':(){}\"*!# " . T.last, T.isPrefixOf "Chorus"]
@@ -60,3 +64,6 @@ randomTweet' mkv seeds = go $ GoState mkv seeds "" "" True
 
 randomTweet :: IO T.Text
 randomTweet = songs >>= uncurry randomTweet'
+
+randomTweetFrom :: FilePath -> IO T.Text
+randomTweetFrom dir = songsFrom dir >>= uncurry randomTweet'
