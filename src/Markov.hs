@@ -1,29 +1,26 @@
-{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings         #-}
 module Markov where
 
-import qualified Data.Map as M
-import Control.Monad.Random
-import System.Random.Mersenne.Pure64
-import Data.List
-import Control.Arrow
-import Control.Applicative
-import Data.Monoid
-import Data.Ord
-import Data.Function
-import Data.Maybe
-import Control.Monad
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import System.Directory
-import Data.String
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Random
+import           Data.List                     (foldl')
+import qualified Data.Map                      as M
+import           Data.Maybe
+import           Data.Monoid
+import           Data.String                   (IsString)
+import qualified Data.Text                     as T
+import qualified Data.Text.IO                  as TIO
+import           System.Random.Mersenne.Pure64
 
 newtype Markov g a = Markov{ getMarkov :: M.Map a (Maybe (Rand g a)) }
 
 type MarkovI a = M.Map a (Maybe [(a, Rational)])
 
-data Outcome g a = 
+data Outcome g a =
     Error String
-  | Val a g 
+  | Val a g
   | End
     deriving (Show, Eq)
 
@@ -36,26 +33,12 @@ runMarkov1 mkv gen x = case M.lookup x (getMarkov mkv) of
 
 runMarkov :: (RandomGen g, Ord a, Show a, Num n, Ord n, IsString a) => n -> Markov g a -> g -> a -> Either String [a]
 runMarkov n mkv gen x = go n
-  where 
+  where
     go m | m <= 0 = Right []
          | otherwise = (x:) <$> case runMarkov1 mkv gen x of
             Val a g -> runMarkov (n-1) mkv g a
             End -> Right []
-            Error err -> Left err 
-
-rle :: Ord a => [a] -> [(a, Rational)]
-rle = map (head &&& (fromIntegral . length)) . group
-
-markovi :: Ord a => [a] -> MarkovI a
-markovi xs =   M.map (wrapMaybe . rle) 
-            $ foldr (uncurry accum) wordMap withNexts
-  where withNexts = zip xs (tail xs)
-        wordMap = foldr (`M.insert` []) M.empty xs
-        accum w nxt = M.adjust (nxt:) w
-        wrapMaybe x = case x of { [] -> Nothing; xs -> Just xs }
-
-markov :: (RandomGen g, Ord a) => [a] -> Markov g a
-markov = Markov . M.map (fmap fromList) . markovi 
+            Error err -> Left err
 
 fromMarkovI :: RandomGen g => MarkovI a -> Markov g a
 fromMarkovI = Markov . M.map (fromList <$>)
@@ -77,17 +60,10 @@ insertMkvPairsInto mkv ps = insertEnd lst $ foldl' (flip (uncurry insertMkvI)) m
 
 insertTextInto :: MarkovI T.Text -> T.Text -> MarkovI T.Text
 insertTextInto mkv t = insertMkvPairsInto mkv (zip wds (tail wds))
-  where wds = map clean $ filter notGarbage $ T.words t
+  where wds = map clean $ filter (not . garbage) $ T.words t
+        garbage t = any ($t)
+          [T.null, flip elem "-[]':(){}\"*!# " . T.head, flip elem "[]':(){}\"*!# " . T.last, T.isPrefixOf "Chorus"]
+        clean = T.filter (`notElem` "[]:(){}\"<>\\/ :")
 
 fromTexts :: [T.Text] -> MarkovI T.Text
 fromTexts = foldl' insertTextInto M.empty
-
-clean :: T.Text -> T.Text
-clean = T.filter (`notElem` "[]:(){}\"<>\\/")
-
-notGarbage :: T.Text -> Bool
-notGarbage "" = False
-notGarbage t =
-     T.head t `notElem` "-[]':(){}\"*!#"
-  && T.last t `notElem` "[]':(){}\"*!#"
-  && not (T.isPrefixOf "Chorus" t)
