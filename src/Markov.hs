@@ -24,9 +24,9 @@ data Outcome g a =
   | End
     deriving (Show, Eq)
 
-runMarkov1 :: (RandomGen g, Ord a, Show a, IsString a) => Markov g a -> g -> a -> Outcome g a
+runMarkov1 :: (RandomGen g, Ord a, Show a) => Markov g a -> g -> a -> Outcome g a
 runMarkov1 mkv gen x = case M.lookup x (getMarkov mkv) of
-  Nothing -> Val "" $ snd (next gen)
+  Nothing -> Error "Internal error; cannot find value" -- Val "" $ snd (next gen)
   Just rs -> case flip runRand gen <$> rs of
     Nothing -> End
     Just (a, g) -> Val a g
@@ -59,7 +59,9 @@ insertMkvPairsInto mkv ps = insertEnd lst $ foldl' (flip (uncurry insertMkvI)) m
   where lst = snd $ last ps
 
 insertTextInto :: MarkovI T.Text -> T.Text -> MarkovI T.Text
-insertTextInto mkv t = insertMkvPairsInto mkv (zip wds (tail wds))
+insertTextInto mkv t    = case wds of 
+    [wd] -> insertEnd wd mkv
+    _    -> insertMkvPairsInto mkv (zip <*> tail $ wds)
   where wds = map clean $ filter (not . garbage) $ T.words t
         garbage t = any ($t)
           [T.null, flip elem "-[]':(){}\"*!# " . T.head, flip elem "[]':(){}\"*!# " . T.last, T.isPrefixOf "Chorus"]

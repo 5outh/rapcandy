@@ -25,10 +25,15 @@ songs :: IO (Markov PureMT T.Text, [T.Text])
 songs = do
   files <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
   lns   <- concatMap T.lines <$> mapM TIO.readFile files
-  let hds = filter ((`elem` ['A'..'Z']) . T.head) $ mapMaybe (shead . T.words) lns
+  let hds = cleanUp $ filter ((`elem` ['A'..'Z']) . T.head) $ mapMaybe (shead . T.words) lns
   g    <- newPureMT
   seed <- uniform hds
   return (fromMarkovI (fromTexts lns), hds)
+
+cleanUp = map clean . filter (not . garbage)
+  where garbage t = any ($t)
+          [T.null, flip elem "-[]':(){}\"*!# " . T.head, flip elem "[]':(){}\"*!# " . T.last, T.isPrefixOf "Chorus"]
+        clean = T.filter (`notElem` "[]:(){}\"<>\\/ :")
 
 data GoState = GoState
   { mkv   :: Markov PureMT T.Text
