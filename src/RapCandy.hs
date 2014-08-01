@@ -5,6 +5,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad(forever)
 
 import Markov
+import Tweet
 import Bot
 
 second, minute, hour :: Int

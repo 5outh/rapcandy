@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings #-}
 module Markov where
 
 import qualified Data.Map as M
@@ -60,19 +60,6 @@ markov = Markov . M.map (fmap fromList) . markovi
 fromMarkovI :: RandomGen g => MarkovI a -> Markov g a
 fromMarkovI = Markov . M.map (fromList <$>)
 
-getDirectoryFiles :: FilePath -> IO [FilePath]
-getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents file
-
-clean :: T.Text -> T.Text
-clean = T.filter (`notElem` "[]:(){}\"<>\\/")
-
-notGarbage :: T.Text -> Bool
-notGarbage "" = False
-notGarbage t =
-     T.head t `notElem` "-[]':(){}\"*!#"
-  && T.last t `notElem` "[]':(){}\"*!#"
-  && not (T.isPrefixOf "Chorus" t)
-
 insertMkvI :: Ord a => a -> a -> MarkovI a -> MarkovI a
 insertMkvI k v mkv = M.insert k (Just $ case M.lookup k mkv of
   Nothing -> [(v, 1)]
@@ -95,45 +82,12 @@ insertTextInto mkv t = insertMkvPairsInto mkv (zip wds (tail wds))
 fromTexts :: [T.Text] -> MarkovI T.Text
 fromTexts = foldl' insertTextInto M.empty
 
-cleanText :: T.Text -> T.Text
-cleanText = T.unwords . map clean . filter notGarbage . T.words
+clean :: T.Text -> T.Text
+clean = T.filter (`notElem` "[]:(){}\"<>\\/")
 
-songs :: IO (Markov PureMT T.Text, [T.Text])
-songs = do 
-  files <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
-  lns   <- concatMap (map cleanText . T.lines) <$> mapM TIO.readFile files
-  let hds = filter ((`elem` ['A'..'Z']) . T.head) $ mapMaybe (shead . T.words) lns
-  g    <- newPureMT
-  seed <- uniform hds
-  return (fromMarkovI (fromTexts lns), hds)
-
-shead :: [a] -> Maybe a
-shead []    = Nothing
-shead (x:_) = Just x
-
-data GoState = GoState
-  { mkv :: Markov PureMT T.Text
-  , hds :: [T.Text]
-  , lst :: T.Text
-  , acc :: T.Text
-  , start :: Bool
-  }
-
-go :: GoState -> IO T.Text
-go gs@GoState{..}
-  | T.length acc > 140 && not (T.null lst) = return $ if T.last lst == ',' then T.init lst else lst
-  | otherwise = do
-    seed <- uniform hds
-    g    <- newPureMT
-    let res = T.unwords <$> runMarkov 25 mkv g seed
-    case res of
-      Left err  -> error err
-      Right str -> go $ if T.length str < 20 then gs
-                         else gs { lst = acc, acc = acc <> if start then "" else "\n" <> str, start = False }
-
-randomTweet' :: Markov PureMT T.Text -> [T.Text] -> IO T.Text
-randomTweet' mkv seeds = 
-  go $ GoState mkv seeds "" "" True
-
-randomTweet :: IO T.Text
-randomTweet = songs >>= uncurry randomTweet'
+notGarbage :: T.Text -> Bool
+notGarbage "" = False
+notGarbage t =
+     T.head t `notElem` "-[]':(){}\"*!#"
+  && T.last t `notElem` "[]':(){}\"*!#"
+  && not (T.isPrefixOf "Chorus" t)
