@@ -22,14 +22,14 @@ data Outcome g a =
   | End
     deriving (Show, Eq)
 
-runMarkov1 :: (RandomGen g, Ord a, Show a) => Markov g a -> g -> a -> Outcome g a
+runMarkov1 :: (RandomGen g, Ord a) => Markov g a -> g -> a -> Outcome g a
 runMarkov1 mkv gen x = case M.lookup x (getMarkov mkv) of
   Nothing -> Error "Internal error; cannot find value"
   Just rs -> case flip runRand gen <$> rs of
     Nothing -> End
     Just (a, g) -> Val a g
 
-runMarkov :: (RandomGen g, Ord a, Show a, Num n, Ord n, IsString a) => n -> Markov g a -> g -> a -> Either String [a]
+runMarkov :: (RandomGen g, Ord a) => Integer -> Markov g a -> g -> a -> Either String [a]
 runMarkov n mkv gen x = go n
   where
     go m | m <= 0 = Right []

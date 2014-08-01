@@ -12,9 +12,13 @@
         <string>-d</string>
         <string>/etc/lyrics/</string>
     </array>
-    <key>StartInterval</key>
-    <!-- Run every 12 hours !-->
-    <integer>43200</integer>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>12</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>
