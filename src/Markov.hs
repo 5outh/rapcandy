@@ -1,9 +1,10 @@
-{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, BangPatterns, RecordWildCards #-}
+{-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, RecordWildCards #-}
 module Markov where
 
 import qualified Data.Map as M
 import Control.Monad.Random
-import Data.List(group, groupBy, nub, isPrefixOf)
+import System.Random.Mersenne.Pure64
+import Data.List
 import Control.Arrow
 import Control.Applicative
 import Data.Monoid
@@ -12,7 +13,9 @@ import Data.Function
 import Data.Maybe
 import Control.Monad
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import System.Directory
+import Data.String
 
 newtype Markov g a = Markov{ getMarkov :: M.Map a (Maybe (Rand g a)) }
 
@@ -24,14 +27,14 @@ data Outcome g a =
   | End
     deriving (Show, Eq)
 
-runMarkov1 :: (RandomGen g, Ord a, Show a) => Markov g a -> g -> a -> Outcome g a
+runMarkov1 :: (RandomGen g, Ord a, Show a, IsString a) => Markov g a -> g -> a -> Outcome g a
 runMarkov1 mkv gen x = case M.lookup x (getMarkov mkv) of
-  Nothing -> Error $ "Could not find value; internal error: " <> show x
+  Nothing -> Val "" $ snd (next gen)
   Just rs -> case flip runRand gen <$> rs of
     Nothing -> End
     Just (a, g) -> Val a g
 
-runMarkov :: (RandomGen g, Ord a, Show a, Num n, Ord n) => n -> Markov g a -> g -> a -> Either String [a]
+runMarkov :: (RandomGen g, Ord a, Show a, Num n, Ord n, IsString a) => n -> Markov g a -> g -> a -> Either String [a]
 runMarkov n mkv gen x = go n
   where 
     go m | m <= 0 = Right []
@@ -51,55 +54,65 @@ markovi xs =   M.map (wrapMaybe . rle)
         accum w nxt = M.adjust (nxt:) w
         wrapMaybe x = case x of { [] -> Nothing; xs -> Just xs }
 
-joinMarkovI :: Ord a => MarkovI a -> MarkovI a -> MarkovI a
-joinMarkovI m1 m2 = foldr go m1 ks
-  where ks = M.keys m2
-        m1Dist k = join $ M.lookup k m1
-        m2Dist k = join $ M.lookup k m2
-        joined k = joinDistsMaybe (m1Dist k) (m2Dist k)
-        go k = M.insert k (joined k)
-
-joinDists :: (Eq k, Num v) => [(k, v)] -> [(k, v)] -> [(k, v)]
-joinDists d1 d2 = map addSnds $ groupBy ((==) `on` fst) (d1 ++ d2)
-  where addSnds xs = (fst $ head xs, sum $ map snd xs)
-
-joinDistsMaybe :: (Eq k, Num v) => Maybe [(k, v)] -> Maybe [(k, v)] -> Maybe [(k, v)]
-joinDistsMaybe mm1 mm2 = case (mm1, mm2) of
-  (Nothing, Nothing) -> Nothing
-  (m1, Nothing) -> m1
-  (Nothing, m2) -> m2
-  (Just m1, Just m2) -> Just $ joinDists m1 m2
-
 markov :: (RandomGen g, Ord a) => [a] -> Markov g a
 markov = Markov . M.map (fmap fromList) . markovi 
 
+fromMarkovI :: RandomGen g => MarkovI a -> Markov g a
 fromMarkovI = Markov . M.map (fromList <$>)
-markoviString = markovi . map clean . filter notGarbage . T.words
-markoviStrings = foldr1 joinMarkovI . map markoviString
 
-markovString :: RandomGen g => T.Text -> Markov g T.Text
-markovString = fromMarkovI . markoviString
-
-markovStrings :: RandomGen g => [T.Text] -> Markov g T.Text
-markovStrings = fromMarkovI . foldr1 joinMarkovI . map markoviString
-
-getLines file = 
-  filter (\x -> not (null x) && not ("[" `isPrefixOf` x)) . lines <$> readFile file
-
+getDirectoryFiles :: FilePath -> IO [FilePath]
 getDirectoryFiles file = filter (`notElem` [".", ".."]) <$> getDirectoryContents file
 
-clean = T.filter (`notElem` "[]:(){}\"<>")
+clean :: T.Text -> T.Text
+clean = T.filter (`notElem` "[]:(){}\"<>\\/")
 
+notGarbage :: T.Text -> Bool
+notGarbage "" = False
 notGarbage t =
-     T.head t `notElem` "-[]':(){}\"*"
-  && T.last t `notElem` "[]':(){}\"*"
+     T.head t `notElem` "-[]':(){}\"*!#"
+  && T.last t `notElem` "[]':(){}\"*!#"
   && not (T.isPrefixOf "Chorus" t)
 
+insertMkvI :: Ord a => a -> a -> MarkovI a -> MarkovI a
+insertMkvI k v mkv = M.insert k (Just $ case M.lookup k mkv of
+  Nothing -> [(v, 1)]
+  Just xs -> case xs of
+    Nothing -> [(v, 1)]
+    Just ys -> (v, 1):ys) mkv
+
+insertEnd :: Ord a => a -> MarkovI a -> MarkovI a
+insertEnd k = M.insert k Nothing
+
+insertMkvPairsInto :: Ord a => MarkovI a -> [(a, a)] -> MarkovI a
+insertMkvPairsInto mkv [] = mkv
+insertMkvPairsInto mkv ps = insertEnd lst $ foldl' (flip (uncurry insertMkvI)) mkv ps
+  where lst = snd $ last ps
+
+insertTextInto :: MarkovI T.Text -> T.Text -> MarkovI T.Text
+insertTextInto mkv t = insertMkvPairsInto mkv (zip wds (tail wds))
+  where wds = map clean $ filter notGarbage $ T.words t
+
+fromTexts :: [T.Text] -> MarkovI T.Text
+fromTexts = foldl' insertTextInto M.empty
+
+cleanText :: T.Text -> T.Text
+cleanText = T.unwords . map clean . filter notGarbage . T.words
+
+songs :: IO (Markov PureMT T.Text, [T.Text])
+songs = do 
+  files <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
+  lns   <- concatMap (map cleanText . T.lines) <$> mapM TIO.readFile files
+  let hds = filter ((`elem` ['A'..'Z']) . T.head) $ mapMaybe (shead . T.words) lns
+  g    <- newPureMT
+  seed <- uniform hds
+  return (fromMarkovI (fromTexts lns), hds)
+
+shead :: [a] -> Maybe a
 shead []    = Nothing
 shead (x:_) = Just x
 
 data GoState = GoState
-  { mkv :: Markov StdGen T.Text
+  { mkv :: Markov PureMT T.Text
   , hds :: [T.Text]
   , lst :: T.Text
   , acc :: T.Text
@@ -111,17 +124,16 @@ go gs@GoState{..}
   | T.length acc > 140 && not (T.null lst) = return $ if T.last lst == ',' then T.init lst else lst
   | otherwise = do
     seed <- uniform hds
-    g    <- newStdGen
+    g    <- newPureMT
     let res = T.unwords <$> runMarkov 25 mkv g seed
     case res of
       Left err  -> error err
-      Right str -> go $ gs { lst = acc, acc = acc <> if start then "" else "\n" <> str, start = False }
+      Right str -> go $ if T.length str < 20 then gs
+                         else gs { lst = acc, acc = acc <> if start then "" else "\n" <> str, start = False }
+
+randomTweet' :: Markov PureMT T.Text -> [T.Text] -> IO T.Text
+randomTweet' mkv seeds = 
+  go $ GoState mkv seeds "" "" True
 
 randomTweet :: IO T.Text
-randomTweet = do
-  songs <- fmap ("./scraper/lyrics/" <>) <$> getDirectoryFiles "./scraper/lyrics"
-  files <- replicateM 10 (uniform songs)
-  lns <- (map T.pack . concat) <$> mapM getLines files
-  let hds  = mapMaybe (shead . map clean . filter notGarbage . T.words) lns
-      !mkv = markovStrings lns
-  go $ GoState mkv hds "" "" True
+randomTweet = songs >>= uncurry randomTweet'
