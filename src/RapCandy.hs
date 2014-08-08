@@ -9,11 +9,6 @@ import           Bot
 import           Markov
 import           Tweet
 
-second, minute, hour :: Int
-second = 1000000
-minute = 60 * second
-hour   = 60 * minute
-
 main :: IO ()
 main = do
   argPairs <- zip <*> tail <$> getArgs
